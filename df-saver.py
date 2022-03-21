@@ -256,10 +256,12 @@ class Parser:
 
         # Group_1 "Connection to DB"
         parser_conn = parser.add_argument_group(title='Connection options')
-        parser_conn.add_argument('-db-addr', nargs='?', const=0, default='10.32.1.62', type=str.lower)
+        # parser_conn.add_argument('-db-addr', nargs='?', const=0, default='10.32.1.62', type=str.lower)
+        parser_conn.add_argument('-db-addr', nargs='?', const=0, default='127.0.0.1', type=str.lower)
         parser_conn.add_argument('-db-port', nargs='?', const=0, default=5432, type=int)
         parser_conn.add_argument('-db-name', nargs='?', const=0, default='city_db_final', type=str.lower)
-        parser_conn.add_argument('-db-user', nargs='?', const=0, default='postgres', type=str.lower)
+        # parser_conn.add_argument('-db-user', nargs='?', const=0, default='postgres', type=str.lower)
+        parser_conn.add_argument('-db-user', nargs='?', const=0, default='gk', type=str.lower)
         parser_conn.add_argument('-db-pass', nargs='?', const=0, default='postgres', type=str.lower)
 
         # Group_2 "Query data from DB"
@@ -273,6 +275,8 @@ class Parser:
 
         # Group_3 "Downloading (saving) data"
         parser_saver = parser.add_argument_group(title='Saving options')
+        parser_saver.add_argument('--save', '--s', dest='save', default=False, action='store_true',
+                                  help='Сохранять результат запроса?')
         parser_saver.add_argument('-format', '-f', nargs='?', const=0, default='csv',
                                   choices=('csv', 'json', 'geojson'), help='Формат сохранения')
         parser_saver.add_argument('-file-name', '-fn', nargs='?', const=0, default='',
@@ -310,7 +314,8 @@ class Parser:
             df = Parser.db_query(conn, args)
 
             # Saving
-            Parser.df_save(df, args)
+            if args.save:
+                Parser.df_save(df, args)
 
     @staticmethod
     def db_connect(args):
