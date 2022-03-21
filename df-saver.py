@@ -275,7 +275,7 @@ class Parser:
 
         # Group_3 "Downloading (saving) data"
         parser_saver = parser.add_argument_group(title='Saving options')
-        parser_saver.add_argument('--save', '--s', dest='save', default=False, action='store_true',
+        parser_saver.add_argument('-save', '-s', dest='save', default=False, action='store_true',
                                   help='Сохранять результат запроса?')
         parser_saver.add_argument('-format', '-f', nargs='?', const=0, default='csv',
                                   choices=('csv', 'json', 'geojson'), help='Формат сохранения')
