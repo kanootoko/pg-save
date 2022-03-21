@@ -291,8 +291,8 @@ class Parser:
         # Group_5 describe table (get list of elements and their types)
         parser_table = parser.add_argument_group(title="Describe table (get list of elements and their types)")
         parser_table.add_argument('-describe-table', '-dt', default=False, action='store_true', help='True, False')
-        parser_table.add_argument('--table-name', '--tn', nargs='?', const=0, default='physical_objects',
-                                  type=str.lower, help='Название таблицы, default=physical_objects')
+        parser_table.add_argument('--table-name', '--tn', nargs='?', const=0, default='dump',
+                                  type=str.lower, help='Название таблицы, default=dump')
 
         # Взятие переданных аргументов
         args = parser.parse_args()
