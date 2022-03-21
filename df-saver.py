@@ -286,15 +286,13 @@ class Parser:
 
         # Group_4 describe db (get list of tables and schemas)
         parser_schema = parser.add_argument_group(title='Describe DB (get list of tables and schemas)')
-        parser_schema.add_argument('-describe-db', '-ddb', nargs='?', const=0, default='n',
-                                   choices=('y', 'n'), help='y=yes, n=no')
+        parser_schema.add_argument('-describe-db', '-ddb', default=False, action='store_true', help='True, False')
 
         # Group_5 describe table (get list of elements and their types)
         parser_table = parser.add_argument_group(title="Describe table (get list of elements and their types)")
-        parser_table.add_argument('-describe-table', '-dt', nargs='?', const=0, default='n',
-                                  choices=('y', 'n'), help='y=yes, n=no')
+        parser_table.add_argument('-describe-table', '-dt', default=False, action='store_true', help='True, False')
         parser_table.add_argument('--table-name', '--tn', nargs='?', const=0, default='physical_objects',
-                                  type=str.lower, help='Название таблицы')
+                                  type=str.lower, help='Название таблицы, default=physical_objects')
 
         # Взятие переданных аргументов
         args = parser.parse_args()
