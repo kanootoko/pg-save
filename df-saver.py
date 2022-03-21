@@ -296,79 +296,64 @@ class Parser:
         parser_table.add_argument('--table-name', '--tn', nargs='?', const=0, default='physical_objects',
                                   type=str.lower, help='Название таблицы')
 
-        # Take all args from parser
+        # Взятие переданных аргументов
         args = parser.parse_args()
 
-        # Defining "conn" from "conn" for future functions usage
+        # Определение conn для дальнейшего использования
         conn = Parser.db_connect(args)
 
         if getattr(args, 'describe_db') == 'y':
-            # Get shena's tables list
+            # Получить список названий таблиц в схеме
             DBDesc.list_db_schemas_and_tables(conn)
 
         elif getattr(args, 'describe_table') == 'y':
             TableDesc.describe_table(conn, table=getattr(args, 'table_name'))
 
         else:
-            # Defining "df" from "query" for future functions usage
+            # Определение df для дальнейшего использования
             df = Parser.db_query(conn, args)
 
-            # Saving
+            # Сохранение по флагу
             if args.save:
                 Parser.df_save(df, args)
 
     @staticmethod
     def db_connect(args):
-        db_addr = getattr(args, 'db_addr')
-        db_port = getattr(args, 'db_port')
-        db_name = getattr(args, 'db_name')
-        db_user = getattr(args, 'db_user')
-        db_pass = getattr(args, 'db_pass')
+        conn = Properties.connect(db_addr=args.db_addr,
+                                  db_port=args.db_port,
+                                  db_name=args.db_name,
+                                  db_user=args.db_user,
+                                  db_pass=args.db_pass)
 
-        conn = Properties.connect(db_addr=db_addr,
-                                  db_port=db_port,
-                                  db_name=db_name,
-                                  db_user=db_user,
-                                  db_pass=db_pass)
-
-        print(f'\nПодключение к {db_name}: успешно.\n')
+        print(f'\nПодключение к {args.db_name}: успешно.\n')
 
         return conn
 
     @staticmethod
     def db_query(conn, args):
-        table = getattr(args, 'table_name')
-        centroid_col = getattr(args, 'centroid_col')
-        select = getattr(args, 'select_query')
-
-        if select:
+        if args.select_query:
             print('Загрузка таблицы ...\n')
-            df = Query.select_table(conn, select_query=select)
+            df = Query.select_table(conn, select_query=args.select_query)
             print('\n', df.head(), '\n')
             return df
 
-        elif table:
+        elif args.table_name:
             print('Загрузка таблицы ...\n')
-            df = Query.get_table(conn, table=table, centroid_col=centroid_col)
+            df = Query.get_table(conn, table=args.table_name, centroid_col=args.centroid_col)
             print('\n', df.head(), '\n')
             return df
 
     @staticmethod
     def df_save(df, args):
-        format = getattr(args, 'format')
-        file_name = getattr(args, 'file_name')
-        geometry_col = getattr(args, 'geometry_col')
-        table_name = getattr(args, 'table_name')
+        if not args.file_name:
+            args.file_name = args.table_name
 
-        if not file_name:
-            file_name = table_name
-
-        if format == 'csv':
-            Save.to_csv(df, file_name=file_name)
-        elif format == 'geojson':
-            Save.to_geojson(df, geometry_col=geometry_col, file_name=file_name)
-        elif format == 'json':
-            Save.to_json(df, file_name=file_name)
+        if args.format == 'csv':
+            Save.to_csv(df, file_name=args.file_name)
+        elif args.format == 'geojson':
+            Save.to_geojson(df, geometry_col=args.geometry_col, file_name=args.file_name)
+        elif args.format == 'json':
+            Save.to_json(df, file_name=args.file_name)
         else:
             raise TypeError
 
