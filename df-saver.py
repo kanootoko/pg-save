@@ -300,11 +300,11 @@ class Parser:
         # Определение conn для дальнейшего использования
         conn = Parser.db_connect(args)
 
-        if getattr(args, 'describe_db') == 'y':
+        if getattr(args, 'describe_db'):
             # Получить список названий таблиц в схеме
             DBDesc.list_db_schemas_and_tables(conn)
 
-        elif getattr(args, 'describe_table') == 'y':
+        elif getattr(args, 'describe_table'):
             TableDesc.describe_table(conn, table=getattr(args, 'table_name'))
 
         else:
