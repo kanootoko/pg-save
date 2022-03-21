@@ -141,7 +141,7 @@ class Query:
         with conn, conn.cursor() as cur:
 
             try:
-                cur.execute(f'{select_query} LIMIT 5')
+                cur.execute(f'{select_query}')
             except Exception as e:
                 print('Ошибка в SELECT-запросе:\n\n', e)
                 raise e
