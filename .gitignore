@@ -1,0 +1,10 @@
+.idea
+.vscode
+.mypy_cache
+*.csv
+*.xlsx
+*.json
+*.geojson
+env
+.env
+env.txt
