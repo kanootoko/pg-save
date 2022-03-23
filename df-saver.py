@@ -127,7 +127,7 @@ class Query:
 
     @staticmethod
     def select_table(conn, select_query: str):
-        # Проверка на только SELECT-запрос
+        # Проверка на то что передан только SELECT-запрос
         stop_phrases = ['update ', 'drop ', 'insert ', 'create table', ';',
                         'alter', 'deallocate', 'copy', 'move', 'import',
                         'reassign', 'grant']
@@ -139,7 +139,6 @@ class Query:
             return None
 
         with conn, conn.cursor() as cur:
-
             try:
                 cur.execute(f'{select_query}')
             except Exception as e:
@@ -266,7 +265,7 @@ class Parser:
 
         # Group_2 "Query data from DB"
         parser_query = parser.add_argument_group(title='Query options')
-        parser_query.add_argument('-table-name', '-tn', nargs='?', const=0, default='physical_objects',
+        parser_query.add_argument('-table-name', '-tn', nargs='?', const=0, default='',
                                   type=str.lower, help='Название таблицы')
         parser_query.add_argument('-select-query', '-sq', nargs='?', const=0, default='',
                                   type=str, help='Селект-запрос')
@@ -291,8 +290,8 @@ class Parser:
         # Group_5 describe table (get list of elements and their types)
         parser_table = parser.add_argument_group(title="Describe table (get list of elements and their types)")
         parser_table.add_argument('-describe-table', '-dt', default=False, action='store_true', help='True, False')
-        parser_table.add_argument('--table-name', '--tn', nargs='?', const=0, default='dump',
-                                  type=str.lower, help='Название таблицы, default=dump')
+        parser_table.add_argument('--table-name', '--tn', nargs='?', const=0, default='',
+                                  type=str.lower, help='Название таблицы')
 
         # Взятие переданных аргументов
         args = parser.parse_args()
