@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import traceback
 from typing import Any, Dict, List, Optional, Union
 
 import click
@@ -9,8 +10,13 @@ import numpy as np
 import pandas as pd
 import psycopg2
 from numpy import nan
+from psycopg2 import errors as pg_errors
 
 log = loguru.logger
+
+class UnsafeExpressionException(Exception):
+    def __init__(self, *args, **kwargs):
+        super().__init__(args, **kwargs)
 
 class NpEncoder(json.JSONEncoder):
     def default(self, obj: Any) -> Any:
@@ -116,7 +122,7 @@ class Query:
             log.error('В запросе есть что-то еще, кроме только SELECT-запроса.\n'
                   'Возможно, используется одно из ключевых слов:\n'
                   '"update", "drop", "insert", "create", ";", ...')
-            raise Exception(f'Query seems to be unsafe')
+            raise UnsafeExpressionException(f'Query seems to be unsafe')
 
         with conn, conn.cursor() as cur:
             try:
@@ -353,9 +359,19 @@ def main(db_addr: str, db_port: int, db_name: str, db_user: str, db_pass: str, g
             except KeyboardInterrupt:
                 print('Ctrl+C hit, exiting')
                 break
+            except pg_errors.UndefinedTable as ex:
+                print(f'Table is not found: {ex.pgerror}')
+            except pg_errors.UndefinedColumn as ex:
+                print(f'Column is not found: {ex.pgerror}')
+            except (pg_errors.UndefinedFunction, pg_errors.UndefinedParameter) as ex:
+                print(f'Using undefined function: {ex.pgerror}')
+            except pg_errors.SyntaxError as ex:
+                print(f'Syntax error: {ex.pgerror}')
+            except UnsafeExpressionException:
+                print('This utility is not ment to update data, use other methods, aborting')
             except Exception as ex:
                 print(f'Exception occured: {ex}')
-                log.exception(f'Exception occured: {ex}')
+                log.debug(traceback.format_exc())
     elif list_tables:
         log.debug('Listing tables in datbase')
         DatabaseDescription.list_tables(conn)
@@ -363,12 +379,32 @@ def main(db_addr: str, db_port: int, db_name: str, db_user: str, db_pass: str, g
         log.debug(f'Describing "{describe_table}" table')
         DatabaseDescription.describe_table(conn, describe_table)
     elif query is not None:
-        if query.lower().startswith('select'):
-            if use_centroids:
-                log.warning('Option --use_centroids is ignored due to user query')
-            df = Query.select(conn, query)
-        else:
-            df = Query.get_table(conn, query, use_centroids)
+        try:
+            if query.lower().startswith('select'):
+                if use_centroids:
+                    log.warning('Option --use_centroids is ignored due to user query')
+                df = Query.select(conn, query)
+            else:
+                df = Query.get_table(conn, query, use_centroids)
+        except pg_errors.UndefinedTable as ex:
+            print(f'Table is not found: {ex.pgerror}')
+            exit(1)
+        except pg_errors.UndefinedColumn as ex:
+            print(f'Column is not found: {ex.pgerror}')
+            exit(1)
+        except (pg_errors.UndefinedFunction, pg_errors.UndefinedParameter) as ex:
+            print(f'Using undefined function: {ex.pgerror}')
+            exit(1)
+        except pg_errors.SyntaxError as ex:
+            print(f'Syntax error: {ex.pgerror}')
+            exit(1)
+        except UnsafeExpressionException:
+            print('This utility is not ment to update data, use other methods, aborting')
+            exit(1)
+        except Exception as ex:
+            print(f'Exception occured: {ex}')
+            log.debug(traceback.format_exc())
+            exit(1)
 
         print(df)
 
