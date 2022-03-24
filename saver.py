@@ -339,8 +339,8 @@ def main(db_addr: str, db_port: int, db_name: str, db_user: str, db_pass: str, g
                     filename = None
                     query_end = command.rfind('"')
                     if '>' in command:
-                        filename = command[command.rfind('>') + 1:].strip().strip('"', "'")
-                        query_end = command.rfind('"', command.rfind('>'))
+                        filename = command[command.rfind('>') + 1:].strip().strip('\'"')
+                        query_end = command.rfind('"', 2, command.rfind('>'))
                         log.debug(f'Saving query to file "{filename}"')
                     query = command[1:query_end]
                     log.debug(f'Running query: {query}')
