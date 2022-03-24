@@ -1,16 +1,28 @@
-import argparse
 import json
 import os
-from datetime import date
-from typing import Any, Dict, List, Optional
+import sys
+from typing import Any, Dict, List, Optional, Union
 
 import click
 import loguru
+import numpy as np
 import pandas as pd
 import psycopg2
 from numpy import nan
 
 log = loguru.logger
+
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj: Any) -> Any:
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return int(obj) if obj.is_integer() else float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if np.isnan(obj):
+            return None
+        return str(obj)
 
 class DatabaseDescription:
 
@@ -29,38 +41,44 @@ class DatabaseDescription:
                 '      AND a.attrelid = ('
                 '          SELECT c.oid FROM pg_catalog.pg_class c'
                 '              LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace'
-                '          WHERE n.nspname = %s AND c.relname = %s AND pg_catalog.pg_table_is_visible(c.oid)'
+                '          WHERE n.nspname = %s AND c.relname = %s'
                 '      )'
                 ' ) as types JOIN information_schema.columns c ON types.column = c.column_name AND table_schema = %s AND table_name = %s',
                 (schema, table) * 2)
-        return pd.DataFrame(cur.fetchall(), columns=[d.name for d in cur.description]).replace({nan: None})
+        return pd.DataFrame(cur.fetchall(), columns=[d.name for d in cur.description])
 
     @staticmethod
     def get_tables_list(cur: 'psycopg2.cursor', schema: Optional[str] = None) -> pd.DataFrame:
         cur.execute(f'SELECT table_schema as schema, table_name as table FROM information_schema.tables'
-                " WHERE table_name NOT LIKE 'pg_%'"
+                " WHERE table_name NOT LIKE 'pg_%%'"
                 "   AND table_schema NOT IN ('pg_catalog', 'information_schema', 'topology')" +
-                (' AND schema = %s' if schema is not None else '') +
-                ' ORDER BY table_schema, table_name', ((schema,) if schema is not None else None))
-        return pd.DataFrame(cur.fetchall(), columns=[d.name for d in cur.description]).replace({nan: None})
+                (' AND table_schema = %s' if schema is not None else '') +
+                ' ORDER BY table_schema, table_name',
+                ((schema,) if schema is not None else None))
+        return pd.DataFrame(cur.fetchall(), columns=[d.name for d in cur.description])
 
     @staticmethod
-    def describe_table(cur: 'psycopg2.cursor', table: str) -> None:
-        description = DatabaseDescription.get_table_description(cur, table)
-
-        print('-' * os.get_terminal_size(0).columns)
-        with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # more options can be specified also
+    def describe_table(conn_or_cur: Union['psycopg2.connection', 'psycopg2.cursor'], table: str) -> None:
+        if isinstance(conn_or_cur, psycopg2.extensions.connection):
+            with conn_or_cur, conn_or_cur.cursor() as cur:
+                description = DatabaseDescription.get_table_description(cur, table)
+        else:
+            description = DatabaseDescription.get_table_description(conn_or_cur, table)
+        with pd.option_context('display.max_rows', None, 'display.max_columns', None,
+                'display.width', os.get_terminal_size(0).columns):  # more options can be specified also
             print(description.fillna(''))
-        print('-' * os.get_terminal_size(0).columns)
 
     @staticmethod
-    def list_tables(cur: 'psycopg2.cursor', schema: Optional[str] = None) -> None:
-        description = DatabaseDescription.get_tables_list(cur, schema)
+    def list_tables(conn_or_cur: Union['psycopg2.connection', 'psycopg2.cursor'], schema: Optional[str] = None) -> None:
+        if isinstance(conn_or_cur, psycopg2.extensions.connection):
+            with conn_or_cur, conn_or_cur.cursor() as cur:
+                description = DatabaseDescription.get_tables_list(cur, schema)
+        else:
+            description = DatabaseDescription.get_tables_list(conn_or_cur, schema)
 
-        print('-' * os.get_terminal_size(0).columns)
-        with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # more options can be specified also
+        with pd.option_context('display.max_rows', None, 'display.max_columns', None,
+                'display.width', os.get_terminal_size(0).columns):  # more options can be specified also
             print(description.fillna(''))
-        print('-' * os.get_terminal_size(0).columns)
 
 class Query:
 
@@ -85,10 +103,10 @@ class Query:
 
             df = pd.DataFrame(cur.fetchall(), columns=description.index)
 
-        return df.replace({nan: None})
+        return df
 
     @staticmethod
-    def select_table(conn: 'psycopg2.connection', query: str):
+    def select(conn: 'psycopg2.connection', query: str):
         # Проверка на то что передан только SELECT-запрос
         stop_phrases = ['update ', 'drop ', 'insert ', 'create ', ';',
                         'alter ', 'deallocate ', 'copy ', 'move ', 'import ',
@@ -98,22 +116,44 @@ class Query:
             log.error('В запросе есть что-то еще, кроме только SELECT-запроса.\n'
                   'Возможно, используется одно из ключевых слов:\n'
                   '"update", "drop", "insert", "create", ";", ...')
-            return
+            raise Exception(f'Query seems to be unsafe')
 
         with conn, conn.cursor() as cur:
             try:
                 cur.execute(query)
             except Exception as e:
-                log.error('Ошибка в SELECT-запросе:\n\n', e)
-                return
+                log.error(f'Ошибка при исполнении запроса SELECT-запросе: {e}')
+                raise
 
-            data = cur.fetchall()
-            df = pd.DataFrame(data, columns=[d.name for d in cur.description])
+            df = pd.DataFrame(cur.fetchall(), columns=[d.name for d in cur.description])
 
-        return df.replace({nan: None})
+        return df
 
 
 class Save:
+
+    @staticmethod
+    def to_file(df: pd.DataFrame, filename: str, geometry_column: Optional[str] = None):
+        if '.' not in filename:
+            log.warning('File does not have extension, using csv')
+            filename += '.csv'
+        format = filename.split('.')[-1]
+        if format not in ('csv', 'xlsx', 'json', 'geojson'):
+            log.error(f'File has wrong extension ("{format}"), switching to .csv')
+            filename += '.csv'
+            format = 'csv'
+        log.info(f'Saving file in {format} format')
+        if format == 'csv':
+            Save.to_csv(df, filename)
+        elif format == 'xlsx':
+            Save.to_excel(df, filename)
+        elif format == 'geojson':
+            if geometry_column is None:
+                log.error('Geometry column is not set, but is required. Falling back to "geometry"')
+                geometry_column = 'geometry'
+            Save.to_geojson(df, filename, geometry_column)
+        elif format == 'json':
+            Save.to_json(df, filename)
 
     @staticmethod
     def to_geojson(df: pd.DataFrame, filename: str, geometry_column: str = 'geometry') -> None:
@@ -127,10 +167,15 @@ class Save:
         geometry_series = df[geometry_column]
         df = df.drop(geometry_column, axis=1)
 
-        for col in df.columns:
-            if df[col].dtypes not in serializable_types:
-                log.warning(f'Dropping non-serializable "{col}" column')
-                df = df.drop(col, axis=1)
+        for col in set(df.columns):
+            if isinstance(df[col], pd.DataFrame):
+                log.warning(f'Table has more than one column with the same name: "{col}"')
+                if any(dtypes not in serializable_types for dtypes in df[col].dtypes):
+                    log.warning(f'Dropping all "{col}" columns because at least one of them is non-serializable')
+            else:
+                if df[col].dtypes not in serializable_types:
+                    log.warning(f'Dropping non-serializable "{col}" column')
+                    df = df.drop(col, axis=1)
 
         geojson = {'type': 'FeatureCollection',
                 'name': filename,
@@ -143,7 +188,7 @@ class Save:
         }
 
         with open(filename, 'w', encoding='utf-8') as file:
-            json.dump(geojson, file, ensure_ascii=False, default=str)
+            json.dump(geojson, file, ensure_ascii=False, cls=NpEncoder)
 
         log.debug('Saved')
 
@@ -153,14 +198,19 @@ class Save:
 
         serializable_types = ['object', 'int64', 'float64', 'bool']
 
-        for col in df.columns:
-            if df[col].dtypes not in serializable_types:
-                log.warning(f'Dropping non-serializable "{col}" column')
-                df = df.drop(col, axis=1)
+        for col in set(df.columns):
+            if isinstance(df[col], pd.DataFrame):
+                log.warning(f'Table has more than one column with the same name: "{col}"')
+                if any(dtypes not in serializable_types for dtypes in df[col].dtypes):
+                    log.warning(f'Dropping all "{col}" columns because at least one of them is non-serializable')
+            else:
+                if df[col].dtypes not in serializable_types:
+                    log.warning(f'Dropping non-serializable "{col}" column')
+                    df = df.drop(col, axis=1)
         
         data: List[Dict[str, Any]] = [dict(row) for _, row in df.iterrows()]
         with open(filename, 'w', encoding='utf-8') as file:
-            json.dump(data, file, ensure_ascii=False, indent=4, default=str)
+            json.dump(data, file, ensure_ascii=False, indent=4, cls=NpEncoder)
         log.debug('Saved')
 
     @staticmethod
@@ -185,62 +235,145 @@ class Save:
 @click.option('--use_centroids', '-c', is_flag=True, help='Load geometry columns as centroids')
 @click.option('--list_tables', '-l', is_flag=True, help='List tables in database and quit')
 @click.option('--describe_table', '-d', type=str, metavar='table_name', default=None, help='Describe given table and quit')
+@click.option('--interactive', '-i', is_flag=True, help='Launch in interactive mode')
 @click.option('--verbose_level', '-v', envvar='VERBOSE_LEVEL', type=click.Choice(['ERROR', 'WARNING', 'INFO', 'DEBUG']),
         default='WARNING', help='Verbose level for the logging')
 @click.option('--filename', '-f', type=str, metavar='path/to/file.[csv|xlsx|geojson|json]', default=None,
         help='Path of the file to save results (.csv, .xlsx, .geojson, .json extensions)')
 @click.argument('query', type=str, metavar='query/select', required=False)
 def main(db_addr: str, db_port: int, db_name: str, db_user: str, db_pass: str, geometry_column: str, use_centroids: bool,
-        list_tables: bool, describe_table: Optional[str], verbose_level: str, filename: Optional[str], query: Optional[str]) -> None:
+        list_tables: bool, describe_table: Optional[str], interactive: bool, verbose_level: str,
+        filename: Optional[str], query: Optional[str]) -> None:
     '''
         Execute query or select full table by name
 
         QUERY can be a table name or a select-query
     '''
-    log.level(verbose_level)
+    log.remove()
+    log.add(sys.stderr, level=verbose_level)
 
-    log.debug(f'Connecting to {db_user}@{db_addr}:{db_port}/{db_name}')
+    if geometry_column is not None and filename is None:
+        log.warning('Geometry column is set, but saving to file is not configured')
+
+    log.info(f'Connecting to {db_user}@{db_addr}:{db_port}/{db_name}')
     
     with psycopg2.connect(host=db_addr, port=db_port, dbname=db_name, user=db_user, password=db_pass) as conn:
         with conn.cursor() as cur:
             cur.execute('SELECT 1')
             assert cur.fetchone()[0] == 1, 'Error on database connection'
 
-    if list_tables:
-        log.debug('Lising tables in datbase')
-        with conn, conn.cursor() as cur:
-            DatabaseDescription.list_tables(cur)
+    if interactive:
+        log.debug('Entering interactive mode')
+        if list_tables or describe_table is not None or filename is not None or query is not None:
+            log.warning('Interactive mode is launching, but some extra parameters (--list_tables, --describe_table or a query) are given. Ignoring')
+        help = 'Commands available:' \
+                '\tq, \\q, quit, exit - quit application\n' \
+                '\t"<query>" [> filename] - execute select query and save the result to file if given\n' \
+                '\t\\s <table_name> [> filename] - select * from table name and save the result to file if given\n' \
+                '\t\\dt [schema] - list tables in the given schema, or in public if empty\n' \
+                '\t\\d [schema].<table> - get table description\n' \
+                '\t\\geometry_column, \\g - change geometry column [current: {geometry_column}]\n' \
+                '\t\\use_centroids, \\c - switch centroids usage on selecting tables [current {use_centroids}]'
+        print('You are in interactive mode.', help, '\thelp - show this message', sep='\n')
+        while True:
+            try:
+                command = input('>> ')
+                if command in ('q', '\\q', 'quit', 'exit'):
+                    break
+                elif command.startswith('\\dt'):
+                    schema = command.split()[1] if ' ' in command else None
+                    DatabaseDescription.list_tables(conn, schema)
+                elif command.startswith('\\d'):
+                    if ' ' not in command:
+                        print('You must use \\d with table name after it, aborting')
+                        continue
+                    DatabaseDescription.describe_table(conn, command.split()[1])
+                elif command.startswith('\\g'):
+                    if ' ' not in command:
+                        print('You must use \\g with table name after it, aborting')
+                        continue
+                    geometry_column = command.split()[1]
+                    print(f'Switched geometry column to "{geometry_column}"')
+                elif command in ('\\use_centroids', '\\c'):
+                    use_centroids = not use_centroids
+                    print(f'Centroid usage is swithced to: {use_centroids}')
+                elif command.startswith('\\s'):
+                    if ' ' not in command:
+                        print('You must use \\s with table name after it, aborting')
+                        continue
+                    filename = None
+                    table_end = len(command)
+                    if '>' in command:
+                        filename = command[command.rfind('>') + 1:].strip().strip('\'"')
+                        table_end = command.rfind('>')
+                        log.debug(f'Saving table select to file "{filename}"')
+
+                    table_name = command[2:table_end].strip()
+                    log.debug(f'Selecting table {table_name}')
+                    df = Query.get_table(conn, table_name)
+
+                    print(df)
+
+                    if filename is not None:
+                        Save.to_file(df, filename)
+                elif command[0] == '"':
+                    if command.find('"', 1) == -1 or command.count('"') - command.count('\\"') == 0:
+                        while True:
+                            try:
+                                line = input('>>>"')
+                                command += f' {line}'
+                                if line.find('"', 1) != -1 or line.count('"') - line.count('\\"') != 0:
+                                    break
+                            except KeyboardInterrupt:
+                                print('Ctrl+C hit, aborting query')
+                                command = ''
+                                break
+                        if command == '':
+                            continue
+                    filename = None
+                    query_end = command.rfind('"')
+                    if '>' in command:
+                        filename = command[command.rfind('>') + 1:].strip().strip('"', "'")
+                        query_end = command.rfind('"', command.rfind('>'))
+                        log.debug(f'Saving query to file "{filename}"')
+                    query = command[1:query_end]
+                    log.debug(f'Running query: {query}')
+
+                    df = Query.select(conn, query)
+                    print(df)
+
+                    if filename is not None:
+                        Save.to_file(df, filename, geometry_column)
+                elif command == 'help':
+                    print(help)
+                else:
+                    log.debug(f'Running query (no options left): {command}')
+                    print(Query.select(conn, command))
+
+            except KeyboardInterrupt:
+                print('Ctrl+C hit, exiting')
+                break
+            except Exception as ex:
+                print(f'Exception occured: {ex}')
+                log.exception(f'Exception occured: {ex}')
+    elif list_tables:
+        log.debug('Listing tables in datbase')
+        DatabaseDescription.list_tables(conn)
     elif describe_table is not None:
-        with conn, conn.cursor() as cur:
-            DatabaseDescription.describe_table(cur, describe_table)
+        log.debug(f'Describing "{describe_table}" table')
+        DatabaseDescription.describe_table(conn, describe_table)
     elif query is not None:
         if query.lower().startswith('select'):
             if use_centroids:
                 log.warning('Option --use_centroids is ignored due to user query')
-            df = Query.select_table(conn, query)
+            df = Query.select(conn, query)
         else:
             df = Query.get_table(conn, query, use_centroids)
 
         print(df)
 
         if filename is not None:
-            if '.' not in filename:
-                log.warning('File does not have extension, using csv')
-                filename += '.csv'
-            format = filename.split('.')[-1]
-            if format not in ('csv', 'xlsx', 'json', 'geojson'):
-                log.error(f'File has wrong extension ("{format}"), switching to .csv')
-                filename += '.csv'
-                format = 'csv'
-            log.info(f'Saving file in {format} format')
-            if format == 'csv':
-                Save.to_csv(df, filename)
-            elif format == 'xlsx':
-                Save.to_excel(df, filename)
-            elif format == 'geojson':
-                Save.to_geojson(df, filename, geometry_column)
-            elif format == 'json':
-                Save.to_json(df, filename)
+            Save.to_file(df, filename, geometry_column)
     else:
         log.error('No query, -l or -d is given, nothing to be done')
         exit(1)
