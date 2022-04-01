@@ -6,5 +6,6 @@
 *.json
 *.geojson
 env
-.env
+*.env
 env.txt
+*.sql

@@ -2,14 +2,13 @@ import json
 import os
 import sys
 import traceback
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, TextIO, Union
 
 import click
 import loguru
 import numpy as np
 import pandas as pd
 import psycopg2
-from numpy import nan
 from psycopg2 import errors as pg_errors
 
 log = loguru.logger
@@ -20,13 +19,15 @@ class UnsafeExpressionException(Exception):
 
 class NpEncoder(json.JSONEncoder):
     def default(self, obj: Any) -> Any:
+        if obj is None:
+            return None
         if isinstance(obj, np.integer):
             return int(obj)
         if isinstance(obj, np.floating):
             return int(obj) if obj.is_integer() else float(obj)
         if isinstance(obj, np.ndarray):
             return obj.tolist()
-        if np.isnan(obj):
+        if obj != obj:
             return None
         return str(obj)
 
@@ -162,8 +163,26 @@ class Save:
             Save.to_json(df, filename)
 
     @staticmethod
-    def to_geojson(df: pd.DataFrame, filename: str, geometry_column: str = 'geometry') -> None:
-        log.debug(f'Saving geojson to {filename}')
+    def to_buffer(df: pd.DataFrame, buffer: TextIO, format: str, geometry_column: Optional[str] = None):
+        if format not in ('csv', 'xlsx', 'json', 'geojson'):
+            log.error(f'Format is not supported ("{format}"), switching to csv')
+            format = 'csv'
+        log.info(f'Saving file in {format} format')
+        if format == 'csv':
+            Save.to_csv(df, buffer)
+        elif format == 'xlsx':
+            Save.to_excel(df, buffer)
+        elif format == 'geojson':
+            if geometry_column is None:
+                log.error('Geometry column is not set, but is required. Falling back to "geometry"')
+                geometry_column = 'geometry'
+            Save.to_geojson(df, buffer, geometry_column)
+        elif format == 'json':
+            Save.to_json(df, buffer)
+
+    @staticmethod
+    def to_geojson(df: pd.DataFrame, filename_or_buf: Union[str, TextIO], geometry_column: str = 'geometry') -> None:
+        log.debug('Saving geojson' + f'to "{filename_or_buf}"' if isinstance(filename_or_buf, str) else '')
         serializable_types = ['object', 'int64', 'float64', 'bool']
 
         if geometry_column not in df.columns:
@@ -184,7 +203,6 @@ class Save:
                     df = df.drop(col, axis=1)
 
         geojson = {'type': 'FeatureCollection',
-                'name': filename,
                 'crs': {'type': 'name',
                         'properties': {
                                 'name': 'urn:ogc:def:crs:EPSG::4326'
@@ -192,15 +210,18 @@ class Save:
                 },
                 'features': [{'type': 'Feature', 'properties': dict(row), 'geometry': geometry} for (_, row), geometry in zip(df.iterrows(), geometry_series)]
         }
-
-        with open(filename, 'w', encoding='utf-8') as file:
-            json.dump(geojson, file, ensure_ascii=False, cls=NpEncoder)
+        if isinstance(filename_or_buf, str):
+            geojson['name'] = filename_or_buf
+            with open(filename_or_buf, 'w', encoding='utf-8') as file:
+                json.dump(geojson, file, ensure_ascii=False, cls=NpEncoder)
+        else:
+            json.dump(geojson, filename_or_buf, ensure_ascii=False, cls=NpEncoder)
 
         log.debug('Saved')
 
     @staticmethod
-    def to_json(df: pd.DataFrame, filename: str) -> None:
-        log.debug(f'Saving json to {filename}')
+    def to_json(df: pd.DataFrame, filename_or_buf: str) -> None:
+        log.debug(f'Saving json to {filename_or_buf}')
 
         serializable_types = ['object', 'int64', 'float64', 'bool']
 
@@ -215,20 +236,23 @@ class Save:
                     df = df.drop(col, axis=1)
         
         data: List[Dict[str, Any]] = [dict(row) for _, row in df.iterrows()]
-        with open(filename, 'w', encoding='utf-8') as file:
-            json.dump(data, file, ensure_ascii=False, indent=4, cls=NpEncoder)
+        if isinstance(filename_or_buf, str):
+            with open(filename_or_buf, 'w', encoding='utf-8') as file:
+                json.dump(data, file, ensure_ascii=False, indent=4, cls=NpEncoder)
+        else:
+            json.dump(data, file, ensure_ascii=False, cls=NpEncoder)
         log.debug('Saved')
 
     @staticmethod
-    def to_csv(df: pd.DataFrame, filename: str) -> None:
-        log.debug(f'Saving csv to {filename}')
-        df.to_csv(filename, header=True, index=False)
+    def to_csv(df: pd.DataFrame, filename_or_buf: str) -> None:
+        log.debug('Saving csv' + f'to {filename_or_buf}' if isinstance(filename_or_buf, str) else '')
+        df.to_csv(filename_or_buf, header=True, index=False)
         log.debug(f'Saved')
 
     @staticmethod
-    def to_excel(df: pd.DataFrame, filename: str) -> None:
-        log.debug(f'Saving excel to {filename}')
-        df.to_excel(filename, header=True, index=False)
+    def to_excel(df: pd.DataFrame, filename_or_buf: str) -> None:
+        log.debug('Saving excel' + f'to {filename_or_buf}' if isinstance(filename_or_buf, str) else '')
+        df.to_excel(filename_or_buf, header=True, index=False)
         log.debug(f'Saved')
 
 @click.command()
@@ -263,10 +287,21 @@ def main(db_addr: str, db_port: int, db_name: str, db_user: str, db_pass: str, g
 
     log.info(f'Connecting to {db_user}@{db_addr}:{db_port}/{db_name}')
     
-    with psycopg2.connect(host=db_addr, port=db_port, dbname=db_name, user=db_user, password=db_pass) as conn:
-        with conn.cursor() as cur:
-            cur.execute('SELECT 1')
-            assert cur.fetchone()[0] == 1, 'Error on database connection'
+    try:
+        with psycopg2.connect(host=db_addr, port=db_port, dbname=db_name, user=db_user, password=db_pass, connect_timeout=5) as conn:
+            with conn.cursor() as cur:
+                cur.execute('SELECT 1')
+                assert cur.fetchone()[0] == 1, 'Error on database connection'
+    except psycopg2.OperationalError as ex:
+        log.error(f'Error on database connection: {ex}')
+        exit(1)
+    if query is not None and os.path.isfile(query):
+        log.info('Query is treated as filename, reading query from file')
+        try:
+            with open(query, 'r') as f:
+                query = f.read()
+        except Exception as ex:
+            log.error(f'Exception on file read: {ex}')
 
     if interactive:
         log.debug('Entering interactive mode')
@@ -274,10 +309,11 @@ def main(db_addr: str, db_port: int, db_name: str, db_user: str, db_pass: str, g
             log.warning('Interactive mode is launching, but some extra parameters (--list_tables, --describe_table or a query) are given. Ignoring')
         help = 'Commands available:' \
                 '\tq, \\q, quit, exit - quit application\n' \
-                '\t"<query>" [> filename] - execute select query and save the result to file if given\n' \
-                '\t\\s <table_name> [> filename] - select * from table name and save the result to file if given\n' \
-                '\t\\dt [schema] - list tables in the given schema, or in public if empty\n' \
-                '\t\\d [schema].<table> - get table description\n' \
+                '\t<query/filename> [> filename] - execute one-lined select query (and save the result to file if given)\n' \
+                '\t"<query/filename>" [> filename] - execute select query (and save the result to file if given)\n' \
+                '\t\\s <table_name> [> filename] - select * from table name (and save the result to file if given)\n' \
+                '\t\\dt [schema] - list tables in the given schema, or in all schemas if not given\n' \
+                '\t\\d [schema.]<table> - get table description\n' \
                 '\t\\geometry_column, \\g - change geometry column [current: {geometry_column}]\n' \
                 '\t\\use_centroids, \\c - switch centroids usage on selecting tables [current {use_centroids}]'
         print('You are in interactive mode.', help, '\thelp - show this message', sep='\n')
@@ -342,7 +378,14 @@ def main(db_addr: str, db_port: int, db_name: str, db_user: str, db_pass: str, g
                         filename = command[command.rfind('>') + 1:].strip().strip('\'"')
                         query_end = command.rfind('"', 2, command.rfind('>'))
                         log.debug(f'Saving query to file "{filename}"')
-                    query = command[1:query_end]
+                    query = command[1:query_end].strip()
+                    if os.path.isfile(query):
+                        log.info('Query is treated as filename, reading query from file')
+                        try:
+                            with open(query, 'r') as f:
+                                query = f.read()
+                        except Exception as ex:
+                            log.error(f'Exception on file read: {ex}')
                     log.debug(f'Running query: {query}')
 
                     df = Query.select(conn, query)
@@ -353,8 +396,28 @@ def main(db_addr: str, db_port: int, db_name: str, db_user: str, db_pass: str, g
                 elif command == 'help':
                     print(help)
                 else:
-                    log.debug(f'Running query (no options left): {command}')
-                    print(Query.select(conn, command))
+                    if '>' in command:
+                        query = command[:command.find('>')].strip()
+                        filename = command[command.find('>') + 1:].strip().strip('\'"')
+                    else:
+                        query = command
+                        filename = None
+
+                    if os.path.isfile(query):
+                        log.info('Query is treated as filename, reading query from file')
+                        try:
+                            with open(query, 'r') as f:
+                                query = f.read()
+                        except Exception as ex:
+                            log.error(f'Exception on file read: {ex}')
+
+                    log.debug(f'Running query (no options left): {query}')
+                    
+                    df = Query.select(conn, command)
+                    print(df)
+
+                    if filename is not None:
+                        Save.to_file(df, filename, geometry_column)
 
             except KeyboardInterrupt:
                 print('Ctrl+C hit, exiting')
