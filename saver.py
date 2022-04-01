@@ -240,7 +240,7 @@ class Save:
             with open(filename_or_buf, 'w', encoding='utf-8') as file:
                 json.dump(data, file, ensure_ascii=False, indent=4, cls=NpEncoder)
         else:
-            json.dump(data, file, ensure_ascii=False, cls=NpEncoder)
+            json.dump(data, filename_or_buf, ensure_ascii=False, cls=NpEncoder)
         log.debug('Saved')
 
     @staticmethod
