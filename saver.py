@@ -2,7 +2,7 @@ import json
 import os
 import sys
 import traceback
-from typing import Any, Dict, List, Optional, TextIO, Union
+from typing import Any, Dict, List, Optional, TextIO, Union, BinaryIO
 
 import click
 import loguru
@@ -251,18 +251,19 @@ class Save:
 
     @staticmethod
     def to_csv(df: pd.DataFrame, filename_or_buf: Union[str, TextIO]) -> None:
-        log.debug('Saving csv' + f' to {filename_or_buf}' if isinstance(filename_or_buf, str) else '')
+        log.debug('Saving csv' + (f' to {filename_or_buf}' if isinstance(filename_or_buf, str) else ''))
         df.to_csv(filename_or_buf, header=True, index=False)
         log.debug(f'Saved')
 
     @staticmethod
-    def to_excel(df: pd.DataFrame, filename_or_buf: Union[str, TextIO]) -> None:
-        log.debug('Saving excel' + f' to {filename_or_buf}' if isinstance(filename_or_buf, str) else '')
+    def to_excel(df: pd.DataFrame, filename_or_buf: Union[str, BinaryIO]) -> None:
+        log.debug('Saving excel' + (f' to {filename_or_buf}' if isinstance(filename_or_buf, str) else ''))
         if isinstance(filename_or_buf, str):
             df.to_excel(filename_or_buf, header=True, index=False)
         else:
             writer = pd.ExcelWriter(filename_or_buf)
             df.to_excel(writer, header=True, index=False)
+            writer.save()
         log.debug(f'Saved')
 
 @click.command()
