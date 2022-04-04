@@ -182,7 +182,7 @@ class Save:
 
     @staticmethod
     def to_geojson(df: pd.DataFrame, filename_or_buf: Union[str, TextIO], geometry_column: str = 'geometry') -> None:
-        log.debug('Saving geojson' + f'to "{filename_or_buf}"' if isinstance(filename_or_buf, str) else '')
+        log.debug('Saving geojson' + f' to "{filename_or_buf}"' if isinstance(filename_or_buf, str) else '')
         serializable_types = ['object', 'int64', 'float64', 'bool']
 
         if geometry_column not in df.columns:
@@ -194,9 +194,12 @@ class Save:
 
         for col in set(df.columns):
             if isinstance(df[col], pd.DataFrame):
-                log.warning(f'Table has more than one column with the same name: "{col}"')
-                if any(dtypes not in serializable_types for dtypes in df[col].dtypes):
-                    log.warning(f'Dropping all "{col}" columns because at least one of them is non-serializable')
+                log.warning(f'Table has more than one column with the same name: "{col}", renaming')
+                r = iter(range(df.shape[1] + 1))
+                df = df.rename(lambda name: name if name != col else f'{col}_{next(r)}', axis=1)
+                for col_idx in range(next(r)):
+                    if df[f'{col}_{col_idx}'].dtypes not in serializable_types:
+                        log.warning(f'Dropping non-serializable "{col}_{col_idx}" column')
             else:
                 if df[col].dtypes not in serializable_types:
                     log.warning(f'Dropping non-serializable "{col}" column')
@@ -221,20 +224,23 @@ class Save:
 
     @staticmethod
     def to_json(df: pd.DataFrame, filename_or_buf: str) -> None:
-        log.debug(f'Saving json to {filename_or_buf}')
+        log.debug(f'Saving json' + f' to "{filename_or_buf}"' if isinstance(filename_or_buf, str) else '')
 
         serializable_types = ['object', 'int64', 'float64', 'bool']
 
         for col in set(df.columns):
             if isinstance(df[col], pd.DataFrame):
-                log.warning(f'Table has more than one column with the same name: "{col}"')
-                if any(dtypes not in serializable_types for dtypes in df[col].dtypes):
-                    log.warning(f'Dropping all "{col}" columns because at least one of them is non-serializable')
+                log.warning(f'Table has more than one column with the same name: "{col}", renaming')
+                r = iter(range(df.shape[1] + 1))
+                df = df.rename(lambda name: name if name != col else f'{col}_{next(r)}', axis=1)
+                for col_idx in range(next(r)):
+                    if df[f'{col}_{col_idx}'].dtypes not in serializable_types:
+                        log.warning(f'Dropping non-serializable "{col}_{col_idx}" column')
             else:
                 if df[col].dtypes not in serializable_types:
                     log.warning(f'Dropping non-serializable "{col}" column')
                     df = df.drop(col, axis=1)
-        
+        print(df)
         data: List[Dict[str, Any]] = [dict(row) for _, row in df.iterrows()]
         if isinstance(filename_or_buf, str):
             with open(filename_or_buf, 'w', encoding='utf-8') as file:
@@ -245,13 +251,13 @@ class Save:
 
     @staticmethod
     def to_csv(df: pd.DataFrame, filename_or_buf: str) -> None:
-        log.debug('Saving csv' + f'to {filename_or_buf}' if isinstance(filename_or_buf, str) else '')
+        log.debug('Saving csv' + f' to {filename_or_buf}' if isinstance(filename_or_buf, str) else '')
         df.to_csv(filename_or_buf, header=True, index=False)
         log.debug(f'Saved')
 
     @staticmethod
     def to_excel(df: pd.DataFrame, filename_or_buf: str) -> None:
-        log.debug('Saving excel' + f'to {filename_or_buf}' if isinstance(filename_or_buf, str) else '')
+        log.debug('Saving excel' + f' to {filename_or_buf}' if isinstance(filename_or_buf, str) else '')
         df.to_excel(filename_or_buf, header=True, index=False)
         log.debug(f'Saved')
 
