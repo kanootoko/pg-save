@@ -261,8 +261,8 @@ class Save:
         if isinstance(filename_or_buf, str):
             df.to_excel(filename_or_buf, header=True, index=False)
         else:
-            with pd.ExcelWriter(filename_or_buf) as writer:
-                df.to_excel(writer, header=True, index=False)
+            writer = pd.ExcelWriter(filename_or_buf)
+            df.to_excel(writer, header=True, index=False)
         log.debug(f'Saved')
 
 @click.command()
