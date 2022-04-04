@@ -223,7 +223,7 @@ class Save:
         log.debug('Saved')
 
     @staticmethod
-    def to_json(df: pd.DataFrame, filename_or_buf: str) -> None:
+    def to_json(df: pd.DataFrame, filename_or_buf: Union[str, TextIO]) -> None:
         log.debug(f'Saving json' + f' to "{filename_or_buf}"' if isinstance(filename_or_buf, str) else '')
 
         serializable_types = ['object', 'int64', 'float64', 'bool']
@@ -250,15 +250,19 @@ class Save:
         log.debug('Saved')
 
     @staticmethod
-    def to_csv(df: pd.DataFrame, filename_or_buf: str) -> None:
+    def to_csv(df: pd.DataFrame, filename_or_buf: Union[str, TextIO]) -> None:
         log.debug('Saving csv' + f' to {filename_or_buf}' if isinstance(filename_or_buf, str) else '')
         df.to_csv(filename_or_buf, header=True, index=False)
         log.debug(f'Saved')
 
     @staticmethod
-    def to_excel(df: pd.DataFrame, filename_or_buf: str) -> None:
+    def to_excel(df: pd.DataFrame, filename_or_buf: Union[str, TextIO]) -> None:
         log.debug('Saving excel' + f' to {filename_or_buf}' if isinstance(filename_or_buf, str) else '')
-        df.to_excel(filename_or_buf, header=True, index=False)
+        if isinstance(filename_or_buf, str):
+            df.to_excel(filename_or_buf, header=True, index=False)
+        else:
+            with pd.ExcelWriter(filename_or_buf) as writer:
+                df.to_excel(writer, header=True, index=False)
         log.debug(f'Saved')
 
 @click.command()
