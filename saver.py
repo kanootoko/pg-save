@@ -19,16 +19,12 @@ class UnsafeExpressionException(Exception):
 
 class NpEncoder(json.JSONEncoder):
     def default(self, obj: Any) -> Any:
-        if obj is None:
-            return None
         if isinstance(obj, np.integer):
             return int(obj)
         if isinstance(obj, np.floating):
             return int(obj) if obj.is_integer() else float(obj)
         if isinstance(obj, np.ndarray):
             return obj.tolist()
-        if obj != obj:
-            return None
         return str(obj)
 
 class DatabaseDescription:
@@ -66,25 +62,25 @@ class DatabaseDescription:
 
     @staticmethod
     def describe_table(conn_or_cur: Union['psycopg2.connection', 'psycopg2.cursor'], table: str) -> None:
-        if isinstance(conn_or_cur, psycopg2.extensions.connection):
-            with conn_or_cur, conn_or_cur.cursor() as cur:
+        if isinstance(conn_or_cur, psycopg2.extensions.connection): # type: ignore
+            with conn_or_cur, conn_or_cur.cursor() as cur: # type: ignore
                 description = DatabaseDescription.get_table_description(cur, table)
         else:
-            description = DatabaseDescription.get_table_description(conn_or_cur, table)
+            description = DatabaseDescription.get_table_description(conn_or_cur, table) # type: ignore
         with pd.option_context('display.max_rows', None, 'display.max_columns', None,
-                'display.width', os.get_terminal_size(0).columns):  # more options can be specified also
+                'display.width', os.get_terminal_size().columns): # more options can be specified also
             print(description.fillna(''))
 
     @staticmethod
     def list_tables(conn_or_cur: Union['psycopg2.connection', 'psycopg2.cursor'], schema: Optional[str] = None) -> None:
-        if isinstance(conn_or_cur, psycopg2.extensions.connection):
-            with conn_or_cur, conn_or_cur.cursor() as cur:
+        if isinstance(conn_or_cur, psycopg2.extensions.connection): # type: ignore
+            with conn_or_cur, conn_or_cur.cursor() as cur: # type: ignore
                 description = DatabaseDescription.get_tables_list(cur, schema)
         else:
-            description = DatabaseDescription.get_tables_list(conn_or_cur, schema)
+            description = DatabaseDescription.get_tables_list(conn_or_cur, schema) # type: ignore
 
         with pd.option_context('display.max_rows', None, 'display.max_columns', None,
-                'display.width', os.get_terminal_size(0).columns):  # more options can be specified also
+                'display.width', os.get_terminal_size().columns): # more options can be specified also
             print(description.fillna(''))
 
 class Query:
@@ -163,22 +159,22 @@ class Save:
             Save.to_json(df, filename)
 
     @staticmethod
-    def to_buffer(df: pd.DataFrame, buffer: TextIO, format: str, geometry_column: Optional[str] = None):
+    def to_buffer(df: pd.DataFrame, buffer: Union[TextIO, BinaryIO], format: str, geometry_column: Optional[str] = None):
         if format not in ('csv', 'xlsx', 'json', 'geojson'):
             log.error(f'Format is not supported ("{format}"), switching to csv')
             format = 'csv'
         log.info(f'Saving file in {format} format')
         if format == 'csv':
-            Save.to_csv(df, buffer)
+            Save.to_csv(df, buffer) # type: ignore
         elif format == 'xlsx':
-            Save.to_excel(df, buffer)
+            Save.to_excel(df, buffer) # type: ignore
         elif format == 'geojson':
             if geometry_column is None:
                 log.error('Geometry column is not set, but is required. Falling back to "geometry"')
                 geometry_column = 'geometry'
-            Save.to_geojson(df, buffer, geometry_column)
+            Save.to_geojson(df, buffer, geometry_column) # type: ignore
         elif format == 'json':
-            Save.to_json(df, buffer)
+            Save.to_json(df, buffer) # type: ignore
 
     @staticmethod
     def to_geojson(df: pd.DataFrame, filename_or_buf: Union[str, TextIO], geometry_column: str = 'geometry') -> None:
@@ -204,6 +200,9 @@ class Save:
                 if df[col].dtypes not in serializable_types:
                     log.warning(f'Dropping non-serializable "{col}" column')
                     df = df.drop(col, axis=1)
+        for i in range(df.shape[1]):
+            df.iloc[:, i] = pd.Series(map(lambda x: int(x) if isinstance(x, float) and x.is_integer() else x, df.iloc[:, i]))
+        df = df.replace({np.nan: None})
 
         geojson = {'type': 'FeatureCollection',
                 'crs': {'type': 'name',
@@ -225,6 +224,7 @@ class Save:
     @staticmethod
     def to_json(df: pd.DataFrame, filename_or_buf: Union[str, TextIO]) -> None:
         log.debug(f'Saving json' + f' to "{filename_or_buf}"' if isinstance(filename_or_buf, str) else '')
+        df = df.copy()
 
         serializable_types = ['object', 'int64', 'float64', 'bool']
 
@@ -240,7 +240,9 @@ class Save:
                 if df[col].dtypes not in serializable_types:
                     log.warning(f'Dropping non-serializable "{col}" column')
                     df = df.drop(col, axis=1)
-        print(df)
+        for i in range(df.shape[1]):
+            df.iloc[:, i] = pd.Series(map(lambda x: int(x) if isinstance(x, float) and x.is_integer() else x, df.iloc[:, i]))
+        df = df.replace({np.nan: None})
         data: List[Dict[str, Any]] = [dict(row) for _, row in df.iterrows()]
         if isinstance(filename_or_buf, str):
             with open(filename_or_buf, 'w', encoding='utf-8') as file:
@@ -251,6 +253,11 @@ class Save:
 
     @staticmethod
     def to_csv(df: pd.DataFrame, filename_or_buf: Union[str, TextIO]) -> None:
+        log.debug(f'Saving csv' + f' to "{filename_or_buf}"' if isinstance(filename_or_buf, str) else '')
+        df = df.copy()
+        for i in range(df.shape[1]):
+            df.iloc[:, i] = pd.Series(map(lambda x: int(x) if isinstance(x, float) and x.is_integer() else x, df.iloc[:, i]))
+        df = df.replace({np.nan: None})
         log.debug('Saving csv' + (f' to {filename_or_buf}' if isinstance(filename_or_buf, str) else ''))
         df.to_csv(filename_or_buf, header=True, index=False)
         log.debug(f'Saved')
@@ -258,6 +265,10 @@ class Save:
     @staticmethod
     def to_excel(df: pd.DataFrame, filename_or_buf: Union[str, BinaryIO]) -> None:
         log.debug('Saving excel' + (f' to {filename_or_buf}' if isinstance(filename_or_buf, str) else ''))
+        df = df.copy()
+        for i in range(df.shape[1]):
+            df.iloc[:, i] = pd.Series(map(lambda x: int(x) if isinstance(x, float) and x.is_integer() else x, df.iloc[:, i]))
+        df = df.replace({np.nan: None})
         if isinstance(filename_or_buf, str):
             df.to_excel(filename_or_buf, header=True, index=False)
         else:
