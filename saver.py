@@ -201,7 +201,7 @@ class Save:
                     log.warning(f'Dropping non-serializable "{col}" column')
                     df = df.drop(col, axis=1)
         for i in range(df.shape[1]):
-            df.iloc[:, i] = pd.Series(map(lambda x: int(x) if isinstance(x, float) and x.is_integer() else x, df.iloc[:, i]))
+            df.iloc[:, i] = pd.Series(map(lambda x: int(x) if isinstance(x, float) and x.is_integer() else x, df.iloc[:, i]), dtype=object)
         df = df.replace({np.nan: None})
 
         geojson = {'type': 'FeatureCollection',
@@ -241,7 +241,7 @@ class Save:
                     log.warning(f'Dropping non-serializable "{col}" column')
                     df = df.drop(col, axis=1)
         for i in range(df.shape[1]):
-            df.iloc[:, i] = pd.Series(map(lambda x: int(x) if isinstance(x, float) and x.is_integer() else x, df.iloc[:, i]))
+            df.iloc[:, i] = pd.Series(map(lambda x: int(x) if isinstance(x, float) and x.is_integer() else x, df.iloc[:, i]), dtype=object)
         df = df.replace({np.nan: None})
         data: List[Dict[str, Any]] = [dict(row) for _, row in df.iterrows()]
         if isinstance(filename_or_buf, str):
@@ -256,7 +256,7 @@ class Save:
         log.debug(f'Saving csv' + f' to "{filename_or_buf}"' if isinstance(filename_or_buf, str) else '')
         df = df.copy()
         for i in range(df.shape[1]):
-            df.iloc[:, i] = pd.Series(map(lambda x: int(x) if isinstance(x, float) and x.is_integer() else x, df.iloc[:, i]))
+            df.iloc[:, i] = pd.Series(map(lambda x: int(x) if isinstance(x, float) and x.is_integer() else x, df.iloc[:, i]), dtype=object)
         df = df.replace({np.nan: None})
         log.debug('Saving csv' + (f' to {filename_or_buf}' if isinstance(filename_or_buf, str) else ''))
         df.to_csv(filename_or_buf, header=True, index=False)
@@ -267,7 +267,7 @@ class Save:
         log.debug('Saving excel' + (f' to {filename_or_buf}' if isinstance(filename_or_buf, str) else ''))
         df = df.copy()
         for i in range(df.shape[1]):
-            df.iloc[:, i] = pd.Series(map(lambda x: int(x) if isinstance(x, float) and x.is_integer() else x, df.iloc[:, i]))
+            df.iloc[:, i] = pd.Series(map(lambda x: int(x) if isinstance(x, float) and x.is_integer() else x, df.iloc[:, i]), dtype=object)
         df = df.replace({np.nan: None})
         if isinstance(filename_or_buf, str):
             df.to_excel(filename_or_buf, header=True, index=False)
