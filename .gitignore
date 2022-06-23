@@ -10,3 +10,5 @@ env
 *.env
 env.txt
 *.sql
+*.ipynb
+*.zip
