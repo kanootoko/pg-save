@@ -12,3 +12,6 @@ env.txt
 *.sql
 *.ipynb
 *.zip
+pg_save.egg-info
+dist/
+build/

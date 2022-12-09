@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pg_save"
+version = "0.1.1"
+authors = [
+    { name = "Aleksei Sokol", email = "kanootoko@gmail.com" },
+    { name = "George Kontsevik", email = "george.kontsevik@gmail.com" },
+]
+description = "An utility to save Postgres table data to csv, xlsx, json or geojson without a need of GeoPandas"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+dependencies = [
+    "click>=8.0",
+    "pandas>=1.5",
+    "numpy>=1.22",
+    "loguru>=0.6",
+    "pyxlsx>=1.1",
+    "psycopg2>=2.9",
+]
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.optional-dependencies]
+dev = ["black>=22", "isort"]
+
+[project.urls]
+"Homepage" = "https://github.com/GKI98/df_saver_cli"
+"Bug Tracker" = "https://github.com/GKI98/df_saver_cli/issues"
+
+[tool.black]
+line-width = 120
