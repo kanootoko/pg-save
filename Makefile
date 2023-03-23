@@ -1,3 +1,9 @@
+lint:
+	python -m pylint pg_save --max-line-length 120 -d duplicate-code
+
+format:
+	python -m black pg_save
+
 install:
 	python -m pip install .
 

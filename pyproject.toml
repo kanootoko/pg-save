@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pg_save"
-version = "0.1.1"
+version = "0.2.0"
 authors = [
     { name = "Aleksei Sokol", email = "kanootoko@gmail.com" },
     { name = "George Kontsevik", email = "george.kontsevik@gmail.com" },
@@ -30,11 +30,11 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = ["black>=22", "isort"]
+dev = ["black>=22", "isort", "pre-commit"]
 
 [project.urls]
 "Homepage" = "https://github.com/GKI98/df_saver_cli"
 "Bug Tracker" = "https://github.com/GKI98/df_saver_cli/issues"
 
 [tool.black]
-line-width = 120
+line-length = 120

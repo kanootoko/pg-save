@@ -1,6 +1,7 @@
 """
-    pg_save is an utility which helps to export PostgreSQL tables data, including geo-spatial ones, to the following formats:
-        json, geojson, csv, xlsx
+pg_save is an utility which helps to export PostgreSQL tables data, including geo-spatial ones,
+to the following formats:
+    json, geojson, csv, xlsx
 """
 import os
 import sys
@@ -11,17 +12,29 @@ import psycopg2
 from loguru import logger
 from psycopg2 import errors as pg_errors
 
-import pg_save.database_description as database_description
 import pg_save.export as export_df
 import pg_save.query as query_db
-import pg_save.utils.interactive as interactive_utils
-from pg_save.utils import read_envfile
+from pg_save import database_description
 from pg_save.exceptions import UnsafeExpressionException
+from pg_save.utils import interactive as interactive_utils
+from pg_save.utils import read_envfile
 
 
-def interactive_mode(
-    conn: "psycopg2.connection", geometry_column: str, use_centroids: bool, execute_as_is: bool
+def interactive_mode(  # pylint: disable=too-many-branches,too-many-statements
+    conn: "psycopg2.connection",
+    geometry_column: str,
+    use_centroids: bool,
+    execute_as_is: bool,
 ) -> None:
+    """Interactive mode helper. Parses commands and returns results without closing the connection to the database.
+
+    Args:
+        conn (psycopg2.connection): psycopg2 connection to the database.
+        geometry_column (str): geometry column to use when exporting GeoJSON.
+        use_centroids (bool): indicates whether geometry centroids will be used intead of a full geometry
+        when exporting to GeoJSON.
+        execute_as_is (bool): indicates whether geometry columns will not be cast by ST_AsGeoJSON.
+    """
     logger.debug("Entering interactive mode")
     help_str = (
         "Commands available:"
@@ -37,7 +50,11 @@ def interactive_mode(
     )
     print(
         "You are in interactive mode.",
-        help_str.format(geometry_column=geometry_column, use_centroids=use_centroids, execute_as_is=execute_as_is),
+        help_str.format(
+            geometry_column=geometry_column,
+            use_centroids=use_centroids,
+            execute_as_is=execute_as_is,
+        ),
         "\thelp - show this message",
         sep="\n",
     )
@@ -82,33 +99,59 @@ def interactive_mode(
             if interrupt_count > 1:
                 print("Second Ctrl+C, exiting")
                 break
-            else:
-                print("Ctrl+C hit, interrupting. Use it again or type 'exit' to exit interactive mode")
-        except pg_errors.UndefinedTable as ex:
-            print(f"Table is not found: {ex.pgerror}")
-        except pg_errors.UndefinedColumn as ex:
-            print(f"Column is not found: {ex.pgerror}")
-        except (pg_errors.UndefinedFunction, pg_errors.UndefinedParameter) as ex:
-            print(f"Using undefined function: {ex.pgerror}")
-        except pg_errors.SyntaxError as ex:
-            print(f"Syntax error: {ex.pgerror}")
-        except UnsafeExpressionException:
+            print("Ctrl+C hit, interrupting. Use it again or type 'exit' to exit interactive mode")
+        except pg_errors.UndefinedTable as exc:  # pylint: disable=no-member
+            print(f"Table is not found: {exc.pgerror}")
+        except pg_errors.UndefinedColumn as exc:  # pylint: disable=no-member
+            print(f"Column is not found: {exc.pgerror}")
+        except (pg_errors.UndefinedFunction, pg_errors.UndefinedParameter) as exc:  # pylint: disable=no-member
+            print(f"Using undefined function: {exc.pgerror}")
+        except pg_errors.SyntaxError as exc:  # pylint: disable=no-member
+            print(f"Syntax error: {exc.pgerror}")
+        except UnsafeExpressionException as exc:
             print("This utility is not ment to update data, use other methods, aborting")
-        except Exception as ex:
-            print(f"Exception occured: {ex}")
+            print(f"Exact exception: {exc}")
+        except RuntimeError as exc:
+            print(f"Exception occured: {exc}")
             logger.debug(traceback.format_exc())
 
 
 @click.command()
 @click.option(
-    "--db_addr", "-H", envvar="DB_ADDR", type=str, metavar="localhost", default="localhost", help="Database host addres"
+    "--db_addr",
+    "-H",
+    envvar="DB_ADDR",
+    type=str,
+    metavar="localhost",
+    default="localhost",
+    help="Database host addres",
 )
-@click.option("--db_port", "-P", envvar="DB_PORT", type=int, metavar="5423", default=5432, help="Database host port")
 @click.option(
-    "--db_name", "-D", envvar="DB_NAME", type=str, metavar="city_db_final", default="city_db_final", help="Databse name"
+    "--db_port",
+    "-P",
+    envvar="DB_PORT",
+    type=int,
+    metavar="5423",
+    default=5432,
+    help="Database host port",
 )
 @click.option(
-    "--db_user", "-U", envvar="DB_USER", type=str, metavar="postgres", default="postgres", help="Database user"
+    "--db_name",
+    "-D",
+    envvar="DB_NAME",
+    type=str,
+    metavar="postgres",
+    default="postgres",
+    help="Databse name",
+)
+@click.option(
+    "--db_user",
+    "-U",
+    envvar="DB_USER",
+    type=str,
+    metavar="postgres",
+    default="postgres",
+    help="Database user",
 )
 @click.option(
     "--db_pass",
@@ -130,18 +173,28 @@ def interactive_mode(
 @click.option("--use_centroids", "-c", is_flag=True, help="Load geometry columns as centroids")
 @click.option("--list_tables", "-l", is_flag=True, help="List tables in database and quit")
 @click.option(
-    "--describe_table", "-d", type=str, metavar="table_name", default=None, help="Describe given table and quit"
+    "--describe_table",
+    "-d",
+    type=str,
+    metavar="table_name",
+    default=None,
+    help="Describe given table and quit",
 )
 @click.option("--interactive", "-i", is_flag=True, help="Launch in interactive mode")
 @click.option(
     "--verbose_level",
     "-v",
     envvar="VERBOSE_LEVEL",
-    type=click.Choice(["ERROR", "WARNING", "INFO", "DEBUG", "TRACE"]),
+    type=click.Choice(["ERROR", "WARNING", "INFO", "DEBUG", "TRACE"], False),
     default="WARNING",
     help="Verbose level for the logging",
 )
-@click.option("--execute_as_is", "-r", is_flag=True, help="Do not apply automatic ST_AsGeoJSON() to geometry columns")
+@click.option(
+    "--execute_as_is",
+    "-r",
+    is_flag=True,
+    help="Do not apply automatic ST_AsGeoJSON() to geometry columns",
+)
 @click.option(
     "--filename",
     "-f",
@@ -151,7 +204,7 @@ def interactive_mode(
     help="Path of the file to save results (.csv, .xlsx, .geojson, .json extensions)",
 )
 @click.argument("query", type=str, metavar="query/select", required=False)
-def main(
+def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches,too-many-statements
     db_addr: str,
     db_port: int,
     db_name: str,
@@ -170,7 +223,7 @@ def main(
     """
     Execute query or select full table by name
 
-    QUERY can be a table name or a select-query
+    QUERY can be a filename with a text query, table name (optionally including schema) or a normal text select-query
     """
     logger.remove()
     logger.add(sys.stderr, level=verbose_level)
@@ -178,7 +231,7 @@ def main(
     if geometry_column is not None and geometry_column != "geometry" and filename is None:
         logger.warning("Geometry column is set, but saving to file is not configured")
 
-    logger.info(f"Connecting to {db_user}@{db_addr}:{db_port}/{db_name}")
+    logger.info(f"Connecting to postgresql://{db_user}@{db_addr}:{db_port}/{db_name}")
 
     try:
         with psycopg2.connect(
@@ -188,26 +241,33 @@ def main(
             user=db_user,
             password=db_pass,
             connect_timeout=10,
-            application_name="IDU - Dataframe Saver App",
+            application_name="IDU - DataFrame Saver App",
         ) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
                 assert cur.fetchone()[0] == 1, "Error on database connection"  # type: ignore
-    except psycopg2.OperationalError as ex:
-        logger.error(f"Error on database connection: {ex}")
+    except psycopg2.OperationalError as exc:
+        logger.error(f"Error on database connection: {exc}")
         sys.exit(1)
+
     if query is not None and os.path.isfile(query):
         logger.info("query is treated as filename, reading query from file")
         try:
             with open(query, "r", encoding="utf-8") as file:
                 query = file.read()
-        except Exception as ex:
-            logger.error(f"Exception on file read: {ex}")
+        except UnicodeDecodeError as exc:
+            logger.error("Cannot read file in UTF-8 encoding: {!r}", exc)
+            print(f"Cannot read file in UTF-8 encoding: {exc!r}")
+        except RuntimeError as exc:
+            logger.error("Exception on file read: {!r}", exc)
+            print(f"Error on file read: {exc}")
+            sys.exit(1)
 
     if interactive:
         if list_tables or describe_table is not None or filename is not None or query is not None:
             logger.warning(
-                "Interactive mode is launching, but some extra parameters (--list_tables, --describe_table or a query) are given. Ignoring"
+                "Interactive mode is launching, but some extra parameters"
+                " (--list_tables, --describe_table or a query) are given. Ignoring"
             )
         interactive_mode(conn, geometry_column, use_centroids, execute_as_is)
     elif list_tables:
@@ -224,23 +284,23 @@ def main(
                 table_data, crs_dict = query_db.select(conn, query, execute_as_is=execute_as_is)
             else:
                 table_data, crs_dict = query_db.get_table(conn, query, use_centroids)
-        except pg_errors.UndefinedTable as ex:
-            print(f"Table is not found: {ex.pgerror}")
+        except pg_errors.UndefinedTable as exc:  # pylint: disable=no-member
+            print(f"Table is not found: {exc.pgerror}")
             sys.exit(1)
-        except pg_errors.UndefinedColumn as ex:
-            print(f"Column is not found: {ex.pgerror}")
+        except pg_errors.UndefinedColumn as exc:  # pylint: disable=no-member
+            print(f"Column is not found: {exc.pgerror}")
             sys.exit(1)
-        except (pg_errors.UndefinedFunction, pg_errors.UndefinedParameter) as ex:
-            print(f"Using undefined function: {ex.pgerror}")
+        except (pg_errors.UndefinedFunction, pg_errors.UndefinedParameter) as exc:  # pylint: disable=no-member
+            print(f"Using undefined function: {exc.pgerror}")
             sys.exit(1)
-        except pg_errors.SyntaxError as ex:
-            print(f"Syntax error: {ex.pgerror}")
+        except pg_errors.SyntaxError as exc:  # pylint: disable=no-member
+            print(f"Syntax error: {exc.pgerror}")
             sys.exit(1)
         except UnsafeExpressionException:
             print("This utility is not ment to update data, use other methods, aborting")
             sys.exit(1)
-        except Exception as ex:
-            print(f"Exception occured: {ex!r}")
+        except RuntimeError as exc:
+            print(f"Exception occured: {exc!r}")
             logger.debug(traceback.format_exc())
             sys.exit(1)
 
@@ -256,5 +316,5 @@ def main(
 
 
 if __name__ == "__main__":
-    read_envfile(os.environ.get('ENVFILE', '.env'))
-    main()
+    read_envfile(os.environ.get("ENVFILE", ".env"))
+    main()  # pylint: disable=no-value-for-parameter

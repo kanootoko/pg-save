@@ -1,3 +1,8 @@
+"""Query wrappers are defined here.
+
+Raises:
+    UnsafeExpressionException: raised when query contains suspicious commands (e.g. insert, update, delete, ...)
+"""
 import pandas as pd
 import psycopg2
 from loguru import logger
@@ -8,6 +13,18 @@ from pg_save.exceptions import UnsafeExpressionException
 def get_table(
     conn: "psycopg2.connection", table: str, use_centroids: bool = False
 ) -> tuple[pd.DataFrame, dict[str, int] | None]:
+    """Wrapper for "SELECT * FROM `[table]`"
+
+    Args:
+        conn (psycopg2.connection): psycopg2 connection for the database.
+        table (str): database table name (or schema.table)
+        use_centroids (bool, optional): indicates whether to use geometry centroids or full geometry.
+        Used only with `geometry` fields. Defaults to False.
+
+    Returns:
+        tuple[pd.DataFrame, dict[str, int] | None]: DataFrame of table data and mapping {column: crs}
+        for `geometry` columns. If table does not have those, then null.
+    """
     crs_dict: dict[str, int] | None = None
     logger.trace("executing SELECT on table {}. use_centroids: {}", table, use_centroids)
     with conn, conn.cursor() as cur:
@@ -16,30 +33,45 @@ def get_table(
 
         cur.execute(f"SELECT * from {table} LIMIT 0")
         columns_to_select = []
-        for d in cur.description:
-            if d.type_code not in geometry_types:
-                columns_to_select.append(d.name)
+        for desc in cur.description:
+            if desc.type_code not in geometry_types:
+                columns_to_select.append(desc.name)
             else:
                 if use_centroids:
-                    columns_to_select.append(f'ST_AsGeoJSON(ST_Centroid("{d.name}"))::jsonb "{d.name}"')
+                    columns_to_select.append(f'ST_AsGeoJSON(ST_Centroid("{desc.name}"))::jsonb "{desc.name}"')
                 else:
-                    columns_to_select.append(f'ST_AsGeoJSON("{d.name}")::jsonb "{d.name}"')
-                cur.execute(f"SELECT ST_SRID({d.name}) FROM {table} LIMIT 1")
+                    columns_to_select.append(f'ST_AsGeoJSON("{desc.name}")::jsonb "{desc.name}"')
+                cur.execute(f"SELECT ST_SRID({desc.name}) FROM {table} LIMIT 1")
                 if (res := cur.fetchone()) is not None:
                     if crs_dict is None:
                         crs_dict = {}
-                    crs_dict[d.name] = res[0]  # type: ignore
+                    crs_dict[desc.name] = res[0]  # type: ignore
 
         cur.execute(f'SELECT {", ".join(columns_to_select)} FROM {table}')
 
-        df = pd.DataFrame(cur.fetchall(), columns=[d.name for d in cur.description])
+        dataframe = pd.DataFrame(cur.fetchall(), columns=[desc.name for desc in cur.description])
 
-    return df, crs_dict
+    return dataframe, crs_dict
 
 
 def select(
     conn: "psycopg2.connection", query: str, execute_as_is: bool = False
 ) -> tuple[pd.DataFrame, dict[str, int] | None]:
+    """Wrapper for "`[query]`"
+
+    Args:
+        conn (psycopg2.connection): psycopg2 connection for the database.
+        query (str): user defined query to execute
+        execute_as_is (bool, optional): indicates whether geometry columns should not be casted to ST_AsGeoJSON.
+        Defaults to False.
+
+    Raises:
+        UnsafeExpressionException: raised when query contains suspicious commands (e.g. insert, update, delete, ...)
+
+    Returns:
+        tuple[pd.DataFrame, dict[str, int] | None]: DataFrame of table data and mapping {column: crs}
+        for `geometry` columns. If table does not have those, then null.
+    """
     stop_phrases = {
         "update ",
         "drop ",
@@ -56,13 +88,15 @@ def select(
     }
     logger.trace("executig query: {}", query)
 
-    if any(stop_phrase in query.lower() for stop_phrase in stop_phrases):
-        logger.error(
-            "query seems to do something more than select."
-            " Found one of stop-phrases: 'update', 'drop', 'insert', 'create', ';', ...\nquery: {}",
-            query,
-        )
-        raise UnsafeExpressionException("Query seems to be unsafe")
+    query = query.strip(";")
+    for stop_phrase in stop_phrases:
+        if stop_phrase in query.lower():
+            logger.error(
+                "query seems to do something more than select. Found stop phrase: {}\nquery: {}",
+                stop_phrase,
+                query,
+            )
+            raise UnsafeExpressionException(f"Query contains stop phrase: {stop_phrase}")
 
     crs_dict: dict[str, int] | None = None
     with conn, conn.cursor() as cur:
@@ -70,27 +104,31 @@ def select(
         geometry_types = set(r[0] for r in cur.fetchall())
         try:
             cur.execute(query)
-        except Exception as e:
-            logger.error("Error on user SELECT query: '{}', error: {!r}", query, e)
+        except Exception as exc:
+            logger.error("Error on user SELECT query: '{}', error: {!r}", query, exc)
             raise
 
-        df = pd.DataFrame(cur.fetchall(), columns=[d.name for d in cur.description])
+        dataframe = pd.DataFrame(cur.fetchall(), columns=[desc.name for desc in cur.description])
 
-        if not execute_as_is and df.shape[0] > 0:
-            for d in cur.description:
-                if d.type_code in geometry_types:
+        if not execute_as_is and dataframe.shape[0] > 0:
+            for desc in cur.description:
+                if desc.type_code in geometry_types:
                     if crs_dict is None:
                         crs_dict = {}
-                    cur.execute("SELECT ST_SRID(geom::geometry) FROM (VALUES (%s)) tmp(geom)", (df.iloc[0][d.name],))
-                    crs_dict[d.name] = cur.fetchone()[0]  # type: ignore
+                    cur.execute(
+                        "SELECT ST_SRID(geom::geometry) FROM (VALUES (%s)) tmp(geom)",
+                        (dataframe.iloc[0][desc.name],),
+                    )
+                    crs_dict[desc.name] = cur.fetchone()[0]  # type: ignore
 
                     cur.execute(
-                        f"SELECT ST_AsGeoJSON(geom::geometry)::jsonb FROM (VALUES {', '.join(('(%s)',) * df.shape[0])}) tmp(geom)",
-                        list(df[d.name]),
+                        "SELECT ST_AsGeoJSON(geom::geometry)::jsonb"
+                        f" FROM (VALUES {', '.join(('(%s)',) * dataframe.shape[0])}) tmp(geom)",
+                        list(dataframe[desc.name]),
                     )
-                    df[d.name] = [r[0] for r in cur.fetchall()]
+                    dataframe[desc.name] = [r[0] for r in cur.fetchall()]
 
-    return df, crs_dict
+    return dataframe, crs_dict
 
 
 __all__ = [
