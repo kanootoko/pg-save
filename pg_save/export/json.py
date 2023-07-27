@@ -1,6 +1,6 @@
-"""
-Logic of exporting pandas DataFrame to json is defined here.
-"""
+"""Logic of exporting pandas DataFrame to json is defined here."""
+from __future__ import annotations
+
 import json
 from typing import Any, TextIO
 
@@ -20,6 +20,8 @@ def to_json(dataframe: pd.DataFrame, filename_or_buf: str | TextIO) -> None:
     """
     logger.debug("Saving json" + f' to "{filename_or_buf}"' if isinstance(filename_or_buf, str) else "")
     dataframe = dataframe.copy()
+    if not isinstance(dataframe.index, pd.RangeIndex) or not all(dataframe.index == pd.RangeIndex(dataframe.shape[0])):
+        dataframe = dataframe.reset_index()
 
     serializable_types = ["object", "int64", "float64", "bool"]
 

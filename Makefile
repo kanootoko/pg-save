@@ -1,18 +1,30 @@
+CODE := pg_save
+
 lint:
-	python -m pylint pg_save --max-line-length 120 -d duplicate-code
+	poetry run pylint $(CODE)
 
 format:
-	python -m black pg_save
+	poetry run isort $(CODE)
+	poetry run black $(CODE)
 
 install:
 	python -m pip install .
 
-clean:
-	rm -rf ./build ./dist ./pg_save.egg-info
+install-dev:
+	$(info Use "poetry shell" command to activate virtual environment)
+	poetry install --with dev
 
-udpate-pypi: clean
-	python -m build . --no-isolation
-	python -m twine upload  dist/*
+install-dev-pip:
+	python -m pip install . --
+
+build:
+	poetry build
+
+clean:
+	rm -rf ./dist
+
+update-pypi: clean build
+	poetry publish
 
 install-from-build:
 	python -m wheel install dist/pg_save-*.whl

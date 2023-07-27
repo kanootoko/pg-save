@@ -1,6 +1,6 @@
-"""
-Logic of exporting pandas DataFrame to GeoJSON is defined here.
-"""
+"""Logic of exporting pandas DataFrame to GeoJSON is defined here."""
+from __future__ import annotations
+
 import json
 from typing import TextIO
 
@@ -31,11 +31,13 @@ def to_geojson(
     serializable_types = ["object", "int64", "float64", "bool"]
 
     if geometry_column not in dataframe.columns:
-        logger.error(f'Geometry column "{geometry_column}" is not present, aborting')
+        logger.error('Geometry column "{}" is not present, aborting', geometry_column)
         return
 
     geometry_series = dataframe[geometry_column]
-    dataframe = dataframe.drop(geometry_column, axis=1)
+    dataframe = dataframe.drop(geometry_column, axis=1).copy()
+    if not isinstance(dataframe.index, pd.RangeIndex) or not all(dataframe.index == pd.RangeIndex(dataframe.shape[0])):
+        dataframe = dataframe.reset_index()
 
     for col in set(dataframe.columns):
         if isinstance(dataframe[col], pd.DataFrame):
@@ -48,7 +50,8 @@ def to_geojson(
                 axis=1,
             )
             for col_idx in range(next(overlapping_columns_number_range)):
-                if dataframe[col_name:=f"{col}_{col_idx}"].dtypes not in serializable_types:
+                col_name = f"{col}_{col_idx}"
+                if dataframe[col_name].dtypes not in serializable_types:
                     logger.warning(f'Dropping non-serializable "{col_name}" column')
                     dataframe = dataframe.drop(col_name, axis=1)
         else:

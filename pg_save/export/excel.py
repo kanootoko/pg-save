@@ -1,6 +1,6 @@
-"""
-Logic of exporting pandas DataFrame to excel is defined here.
-"""
+"""Logic of exporting pandas DataFrame to excel is defined here."""
+from __future__ import annotations
+
 from typing import BinaryIO
 
 import numpy as np
@@ -18,6 +18,9 @@ def to_excel(dataframe: pd.DataFrame, filename_or_buf: str | BinaryIO) -> None:
     logger.debug("Saving excel" + (f" to {filename_or_buf}" if isinstance(filename_or_buf, str) else ""))
 
     dataframe = dataframe.copy()
+    if not isinstance(dataframe.index, pd.RangeIndex) or not all(dataframe.index == pd.RangeIndex(dataframe.shape[0])):
+        dataframe = dataframe.reset_index()
+
     for i in range(dataframe.shape[1]):
         dataframe.iloc[:, i] = pd.Series(
             map(

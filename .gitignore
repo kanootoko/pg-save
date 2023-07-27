@@ -15,3 +15,5 @@ env.txt
 pg_save.egg-info
 dist/
 build/
+/.venv
+/poetry.lock

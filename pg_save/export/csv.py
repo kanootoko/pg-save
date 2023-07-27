@@ -1,6 +1,6 @@
-"""
-Logic of exporting pandas DataFrame to csv is defined here.
-"""
+"""Logic of exporting pandas DataFrame to csv is defined here."""
+from __future__ import annotations
+
 from typing import TextIO
 
 import numpy as np
@@ -15,9 +15,12 @@ def to_csv(dataframe: pd.DataFrame, filename_or_buf: str | TextIO) -> None:
         dataframe (pd.DataFrame): DataFrame to export.
         filename_or_buf (str | TextIO): filename or StringIO buffer.
     """
-    logger.debug("Saving csv" + f' to "{filename_or_buf}"' if isinstance(filename_or_buf, str) else "")
+    logger.debug("Saving csv" + (f' to "{filename_or_buf}"' if isinstance(filename_or_buf, str) else ""))
 
     dataframe = dataframe.copy()
+    if not isinstance(dataframe.index, pd.RangeIndex) or not all(dataframe.index == pd.RangeIndex(dataframe.shape[0])):
+        dataframe = dataframe.reset_index()
+
     for i in range(dataframe.shape[1]):
         dataframe.iloc[:, i] = pd.Series(
             map(
