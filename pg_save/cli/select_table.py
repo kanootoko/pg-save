@@ -7,7 +7,6 @@ from psycopg2 import errors as pg_errors
 
 import pg_save.export as export_df
 import pg_save.querying as query_db
-from pg_save import __version__ as version
 from pg_save.dtos.database import DatabaseConfigDto
 from pg_save.utils.print import print_df
 

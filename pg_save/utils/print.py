@@ -23,7 +23,7 @@ def print_df(table_df: pd.DataFrame, limit_rows: bool = True, replace_na_str: st
         "display.width",
         columns,
         "display.max_colwidth",
-        columns,
+        columns // table_df.shape[1],
     ):
         if replace_na_str is not None:
             print(table_df.fillna(replace_na_str))

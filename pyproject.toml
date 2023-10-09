@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pg-save"
-version = "0.3.0"
+version = "0.3.1"
 description = "An utility to export Postgres table data to a various formats without having GeoPandas as a requirement"
 authors = [
     "Aleksei Sokol <kanootoko@gmail.com>",

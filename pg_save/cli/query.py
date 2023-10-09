@@ -57,18 +57,21 @@ def execute_query(  # pylint: disable=too-many-branches,too-many-statements
     if geometry_column is not None and geometry_column != "geometry" and output_filename is None:
         logger.warning("Geometry column is set, but saving to file is not configured")
 
-    if query is not None and Path(query).is_file():
-        logger.info("Query is treated as filename, reading query from file")
-        try:
-            with open(query, "r", encoding="utf-8") as file:
-                query = file.read()
-        except UnicodeDecodeError as exc:
-            logger.error("Cannot read file in UTF-8 encoding: {!r}", exc)
-            print(f"Cannot read file in UTF-8 encoding: {exc!r}")
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.error("Exception on file read: {!r}", exc)
-            print(f"Error on file read: {exc}")
-            sys.exit(1)
+    try:
+        if query is not None and Path(query).exists():
+            logger.info("Query is treated as filename, reading query from file")
+            try:
+                with open(query, "r", encoding="utf-8") as file:
+                    query = file.read()
+            except UnicodeDecodeError as exc:
+                logger.error("Cannot read file in UTF-8 encoding: {!r}", exc)
+                print(f"Cannot read file in UTF-8 encoding: {exc!r}")
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.error("Exception on file read: {!r}", exc)
+                print(f"Error on file read: {exc}")
+                sys.exit(1)
+    except OSError:
+        pass
 
     conn = db_config.get_connection()
     try:
