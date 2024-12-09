@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pg-save"
-version = "0.3.1"
+version = "0.3.2"
 description = "An utility to export Postgres table data to a various formats without having GeoPandas as a requirement"
 authors = [
     "Aleksei Sokol <kanootoko@gmail.com>",
@@ -33,8 +33,8 @@ pyxlsx = "^1.1.3"
 psycopg2 = "^2.9.6"
 
 [tool.poetry.group.dev.dependencies]
-black = "^23.7.0"
-pylint = "^2.17.5"
+black = "^24.10.0"
+pylint = "^3.3.2"
 isort = "^5.12.0"
 pre-commit = "^3.3.3"
 
@@ -45,7 +45,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 target-version = ['py39']
-line_length = 120
+line-length = 120
 
 [tool.pylint.format]
 max-line-length = 120

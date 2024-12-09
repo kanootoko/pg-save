@@ -1,4 +1,5 @@
 """Table information functions are defined here."""
+
 from typing import Union
 
 import pandas as pd

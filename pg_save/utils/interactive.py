@@ -1,4 +1,5 @@
 """Interactive methods of the project are defined here."""
+
 import os
 import sys
 
@@ -7,6 +8,7 @@ from loguru import logger
 
 import pg_save.export as export_df
 import pg_save.querying as query_db
+from pg_save.utils.pd import beautify_dataframe
 from pg_save.utils.print import print_df
 
 
@@ -30,6 +32,8 @@ def select_table(command: str, conn: "psycopg2.connection") -> None:
     table_name = command[2:table_end].strip()
     logger.debug("Selecting table {}", table_name)
     table_data, _ = query_db.get_table(conn, table_name)
+
+    table_data = beautify_dataframe(table_data)
 
     print_df(table_data)
 
@@ -80,6 +84,8 @@ def quoted_command(command: str, conn: "psycopg2.connection", geometry_column: s
     logger.debug("Executing query: {}", query)
 
     table_data, crs_dict = query_db.select(conn, query, execute_as_is)
+    table_data = beautify_dataframe(table_data)
+
     print(table_data)
 
     if filename is not None:
@@ -114,6 +120,8 @@ def command_with_save(command: str, conn: "psycopg2.connection", geometry_column
     logger.debug("Executing query (no options left): {}", query)
 
     table_data, crs_dict = query_db.select(conn, query, execute_as_is)
+
+    table_data = beautify_dataframe(table_data)
 
     print(table_data)
 

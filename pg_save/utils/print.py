@@ -1,4 +1,5 @@
 """Dataframe printing method is defined here."""
+
 from __future__ import annotations
 
 import os
@@ -26,6 +27,6 @@ def print_df(table_df: pd.DataFrame, limit_rows: bool = True, replace_na_str: st
         columns // table_df.shape[1],
     ):
         if replace_na_str is not None:
-            print(table_df.fillna(replace_na_str))
+            print(table_df.infer_objects().fillna(replace_na_str))
         else:
             print(table_df)

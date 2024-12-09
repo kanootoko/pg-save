@@ -1,4 +1,5 @@
 """List tables command is defined here."""
+
 import click
 
 from pg_save import database_description

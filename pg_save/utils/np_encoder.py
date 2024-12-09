@@ -1,4 +1,5 @@
 """Numpy data json encoder is defnied here."""
+
 import json
 from typing import Any
 

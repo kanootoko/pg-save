@@ -1,4 +1,5 @@
 """Select query execution method is defined here."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -42,7 +43,7 @@ def select(
     }
     logger.trace("executig query: {}", query)
 
-    query = query.strip(";")
+    query = query.strip().rstrip(";")
     for stop_phrase in stop_phrases:
         if stop_phrase in query.lower():
             logger.error(

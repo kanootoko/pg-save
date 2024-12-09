@@ -1,4 +1,5 @@
 """Interactive executable part of pg-save utility is defined here"""
+
 import traceback
 
 import click
@@ -129,7 +130,7 @@ def interactive_mode(  # pylint: disable=too-many-branches,too-many-statements
         except pg_errors.SyntaxError as exc:
             print(f"Syntax error: {exc.pgerror}")
         except UnsafeExpressionError as exc:
-            print("This utility is not ment to update data. To do so use psql for example. Aborting")
+            print("This utility is not meant to update data. To do so use psql for example. Aborting")
             print(f"Exact exception: {exc}")
         except Exception as exc:  # pylint: disable=broad-except
             print(f"Exception occured: {exc!r}")

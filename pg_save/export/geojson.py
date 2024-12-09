@@ -1,15 +1,16 @@
 """Logic of exporting pandas DataFrame to GeoJSON is defined here."""
+
 from __future__ import annotations
 
 import json
 from typing import TextIO
 
-import numpy as np
 import pandas as pd
 from loguru import logger
 
 from pg_save.export.default_crs import DEFAULT_CRS
 from pg_save.utils import NpEncoder
+from pg_save.utils.pd import beautify_dataframe
 
 
 def to_geojson(
@@ -38,39 +39,12 @@ def to_geojson(
     dataframe = dataframe.drop(geometry_column, axis=1).copy()
     if not isinstance(dataframe.index, pd.RangeIndex) or not all(dataframe.index == pd.RangeIndex(dataframe.shape[0])):
         dataframe = dataframe.reset_index()
+    dataframe = beautify_dataframe(dataframe)
 
     for col in set(dataframe.columns):
-        if isinstance(dataframe[col], pd.DataFrame):
-            logger.warning(f'Table contains multiple columns having with the same name: "{col}", renaming')
-            overlapping_columns_number_range = iter(range(dataframe.shape[1] + 1))
-            dataframe = dataframe.rename(
-                lambda name, col=col, rng=overlapping_columns_number_range: name
-                if name != col
-                else f"{col}_{next(rng)}",
-                axis=1,
-            )
-            for col_idx in range(next(overlapping_columns_number_range)):
-                col_name = f"{col}_{col_idx}"
-                if dataframe[col_name].dtypes not in serializable_types:
-                    logger.warning(f'Dropping non-serializable "{col_name}" column')
-                    dataframe = dataframe.drop(col_name, axis=1)
-        else:
-            if dataframe[col].dtypes not in serializable_types:
-                logger.warning(f'Dropping non-serializable "{col}" column')
-                dataframe = dataframe.drop(col, axis=1)
-
-    if dataframe.shape[0] > 0:
-        for i in range(dataframe.shape[1]):
-            dataframe.iloc[:, i] = pd.Series(
-                list(
-                    map(
-                        lambda x: int(x) if isinstance(x, float) and x.is_integer() else x,
-                        dataframe.iloc[:, i],
-                    )
-                ),
-                dtype=object,
-            )
-    dataframe = dataframe.replace({np.nan: None})
+        if dataframe[col].dtypes not in serializable_types:
+            logger.warning(f'Dropping non-serializable "{col}" column')
+            dataframe = dataframe.drop(col, axis=1)
 
     geojson = {
         "type": "FeatureCollection",

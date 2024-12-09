@@ -1,4 +1,5 @@
 """Read envfile function is defined here."""
+
 from __future__ import annotations
 
 import os

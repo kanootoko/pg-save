@@ -1,4 +1,5 @@
 """List tables command is defined here."""
+
 import sys
 
 import click

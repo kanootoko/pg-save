@@ -1,4 +1,5 @@
 """Query command is defined here"""
+
 import sys
 import traceback
 from pathlib import Path
@@ -12,6 +13,7 @@ import pg_save.querying as query_db
 from pg_save import __version__ as version
 from pg_save.dtos.database import DatabaseConfigDto
 from pg_save.exceptions.unsafe_expression import UnsafeExpressionError
+from pg_save.utils.pd import beautify_dataframe
 from pg_save.utils.print import print_df
 
 from .group import main, pass_db_config
@@ -89,7 +91,7 @@ def execute_query(  # pylint: disable=too-many-branches,too-many-statements
         print(f"Syntax error: {exc.pgerror}")
         sys.exit(1)
     except UnsafeExpressionError:
-        print("This utility is not ment to update data, use other methods, aborting")
+        print("This utility is not meant to update data, use other methods, aborting")
         sys.exit(1)
     except Exception as exc:  # pylint: disable=broad-except
         print(f"Exception occured: {exc!r}")
@@ -97,6 +99,8 @@ def execute_query(  # pylint: disable=too-many-branches,too-many-statements
         sys.exit(1)
     finally:
         conn.close()
+
+    table_data = beautify_dataframe(table_data)
 
     print_df(table_data)
 

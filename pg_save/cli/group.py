@@ -1,4 +1,5 @@
 """Main group is defined here."""
+
 import sys
 
 import click
@@ -8,7 +9,6 @@ from pg_save import __version__ as version
 from pg_save.dtos import DatabaseConfigDto
 
 
-# pass_db_config = click.make_pass_decorator(DatabaseConfigDto)
 pass_db_config = click.make_pass_decorator(DatabaseConfigDto)
 
 
@@ -70,6 +70,7 @@ pass_db_config = click.make_pass_decorator(DatabaseConfigDto)
 )
 def main(  # pylint: disable=too-many-arguments
     ctx: click.Context,
+    *,
     db_host: str,
     db_port: int,
     db_name: str,

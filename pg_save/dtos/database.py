@@ -1,4 +1,5 @@
 """Database configuration DTO is defined here."""
+
 from dataclasses import dataclass
 
 import psycopg2
